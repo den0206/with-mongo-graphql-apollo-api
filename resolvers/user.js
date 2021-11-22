@@ -1,16 +1,26 @@
-const {tasks, users} = require('../constants');
 const User = require('../database/models/user');
+const Task = require('../database/models/task');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const {env} = require('process');
+const {combineResolvers} = require('graphql-resolvers');
+const {isAuthenticated} = require('./middleware');
 
 module.exports = {
   /// Root Query
   Query: {
-    users: () => users,
-    user: (_, args) => {
-      return users.find((user) => user.id == args.id);
-    },
+    // users: () => users,
+    user: combineResolvers(isAuthenticated, async (_, args, context) => {
+      try {
+        const user = await User.findOne({email: context.email});
+        if (!user) {
+          throw new Error('User Not found');
+        }
+        return user;
+      } catch (e) {
+        console.log(e);
+        throw e;
+      }
+    }),
   },
 
   Mutation: {
@@ -45,8 +55,9 @@ module.exports = {
         if (!isPasswordValid) {
           throw new Error('password is not match');
         }
-        const secKey = process.env.JWT_SECRET_KEY || '';
-        const token = jwt.sign({email: user.email}, secKey, {expiresIn: '1d'});
+        const secret = process.env.JWT_SECRET_KEY || 'mysecretkey';
+
+        const token = jwt.sign({email: user.email}, secret, {expiresIn: '1d'});
         return {token};
       } catch (e) {
         console.log(e);
@@ -56,9 +67,14 @@ module.exports = {
   },
 
   User: {
-    tasks: (parent) => {
-      /// return array
-      return tasks.filter((task) => task.userid == parent.id);
+    tasks: async (parent) => {
+      try {
+        const tasks = await Task.find({user: parent.id});
+        return tasks;
+      } catch (e) {
+        console.log(e);
+        throw e;
+      }
     },
   },
 };

@@ -8,23 +8,23 @@ const {
 } = require('apollo-server-core');
 
 const {connection} = require('./database/util');
-
 const typeDefs = require('./typeDefs');
 const resolvers = require('./resolvers');
+const {verifyUser} = require('./helper/context');
 
 async function startApolloServer(typeDefs, resolvers) {
   dotEnv.config();
-
-  // DB connect
 
   connection();
 
   const server = new ApolloServer({
     typeDefs,
     resolvers,
-    context: () => {
+    context: async ({req}) => {
+      await verifyUser(req);
       return {
-        email: 'Another one',
+        email: req.email,
+        loggedInUserId: req.loggedInUserId,
       };
     },
     plugins: [
@@ -35,7 +35,7 @@ async function startApolloServer(typeDefs, resolvers) {
   });
   const app = express();
   app.use(cors());
-  //   app.use(express.json());
+  app.use(express.json());
   await server.start();
   server.applyMiddleware({app, path: '/graphql'});
 

@@ -13,3 +13,7 @@ module.exports.connection = async () => {
     throw e;
   }
 };
+
+module.exports.isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
