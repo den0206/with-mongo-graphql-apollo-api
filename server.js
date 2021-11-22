@@ -11,6 +11,8 @@ const {connection} = require('./database/util');
 const typeDefs = require('./typeDefs');
 const resolvers = require('./resolvers');
 const {verifyUser} = require('./helper/context');
+const Dataloader = require('dataloader');
+const loaders = require('./dataloader');
 
 async function startApolloServer(typeDefs, resolvers) {
   dotEnv.config();
@@ -20,18 +22,32 @@ async function startApolloServer(typeDefs, resolvers) {
   const server = new ApolloServer({
     typeDefs,
     resolvers,
-    context: async ({req}) => {
-      await verifyUser(req);
-      return {
-        email: req.email,
-        loggedInUserId: req.loggedInUserId,
+    context: async ({req, connection}) => {
+      const contextObj = {};
+
+      if (req) {
+        await verifyUser(req);
+        contextObj.email = req.email;
+        contextObj.loggedInUserId = req.loggedInUserId;
+      }
+
+      contextObj.loaders = {
+        user: new Dataloader((keys) => loaders.user.batchUsers(keys)),
       };
+
+      return contextObj;
     },
     plugins: [
       process.env.NODE_ENV === 'production'
         ? ApolloServerPluginLandingPageProductionDefault({footer: false})
         : ApolloServerPluginLandingPageLocalDefault({footer: false}),
     ],
+    formatError: (e) => {
+      consol.log(e);
+      return {
+        message: e.message,
+      };
+    },
   });
   const app = express();
   app.use(cors());

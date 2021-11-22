@@ -10,7 +10,6 @@ module.exports.verifyUser = async (req) => {
 
     if (bearerHeader) {
       const token = bearerHeader.split(' ')[1];
-      console.log(token);
       const secret = process.env.JWT_SECRET_KEY || 'mysecretkey';
 
       // const tokenDecodablePart = token.split('.')[1];
@@ -18,15 +17,16 @@ module.exports.verifyUser = async (req) => {
       // req.email = decoded.email;
 
       const payload = jwt.verify(token, secret);
-      console.log(payload);
       req.email = payload.email;
       const user = await User.findOne({email: payload.email});
-
       req.loggedInUserId = user.id;
-      console.log(req.loggedInUserId);
     }
   } catch (e) {
     console.log(e);
     throw e;
   }
 };
+
+module.exports.encodeBase64 = (data) => Buffer.from(data).toString('base64');
+module.exports.decodeToBase64 = (data) =>
+  Buffer.from(data, 'base64').toString('ascii');

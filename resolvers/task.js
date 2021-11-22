@@ -1,22 +1,51 @@
-const {tasks, users} = require('../constants');
-const uuid = require('uuid');
 const Task = require('../database/models/task');
 const User = require('../database/models/user');
 const {isAuthenticated, isTaskOwner} = require('./middleware');
 const {combineResolvers} = require('graphql-resolvers');
+const {encodeBase64, decodeToBase64} = require('../helper/context');
 
 module.exports = {
   /// Root Query
   Query: {
-    tasks: combineResolvers(isAuthenticated, async (_, __, context) => {
-      try {
-        const tasks = await Task.find({user: context.loggedInUserId});
-        return tasks;
-      } catch (e) {
-        console.log(e);
-        throw e;
+    tasks: combineResolvers(
+      isAuthenticated,
+      async (_, {cursor, limit = 10}, context) => {
+        try {
+          console.log(limit);
+          const query = {user: context.loggedInUserId};
+          if (cursor) {
+            query['_id'] = {
+              /// 複合化
+              $lt: decodeToBase64(cursor),
+            };
+          }
+
+          let tasks = await Task.find(query)
+            .sort({_id: -1})
+            .limit(limit + 1);
+          const hasNextPage = tasks.length > limit;
+          tasks = hasNextPage ? tasks.slice(0, -1) : tasks;
+
+          /// 暗号化
+          const nextPageCursor = hasNextPage
+            ? encodeBase64(tasks[tasks.length - 1].id)
+            : null;
+
+          const pageFeed = {
+            taskFeed: tasks,
+            pageInfo: {
+              nextPageCursor: nextPageCursor,
+              hasNextPage: hasNextPage,
+            },
+          };
+
+          return pageFeed;
+        } catch (e) {
+          console.log(e);
+          throw e;
+        }
       }
-    }),
+    ),
 
     task: combineResolvers(isAuthenticated, isTaskOwner, async (_, args) => {
       try {
@@ -70,6 +99,11 @@ module.exports = {
       async (_, args, context) => {
         try {
           const deletedTask = await Task.findByIdAndDelete(args.id);
+          await User.updateOne(
+            {_id: context.loggedInUserId},
+            {$pull: {tasks: deletedTask.id}}
+          );
+
           return deletedTask;
         } catch (e) {
           console.log(e);
@@ -82,9 +116,10 @@ module.exports = {
   /// Field Level resolvers
 
   Task: {
-    user: async (parent) => {
+    user: async (parent, __, context) => {
       try {
-        const user = await User.findById(parent.user);
+        // const user = await User.findById(parent.user);
+        const user = await context.loaders.user.load(parent.user.toString());
         return user;
       } catch (e) {
         console.log(e);
